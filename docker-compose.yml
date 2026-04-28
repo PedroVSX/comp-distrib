@@ -1,0 +1,108 @@
+services:
+
+  # ─── Banco de dados ───────────────────────────────────────────────────────────
+  mysql:
+    image: mysql:5.7
+    container_name: mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: wordpress
+      MYSQL_USER: wpuser
+      MYSQL_PASSWORD: wppassword
+    # Sem "ports": o MySQL só é acessível pelos contêineres na rede interna
+    volumes:
+      - ./volumes/mysql:/var/lib/mysql
+    networks:
+      - backend
+
+  # ─── Instâncias do WordPress ──────────────────────────────────────────────────
+  wordpress1:
+    image: wordpress:5.4.2-php7.2-apache
+    container_name: wordpress1
+    restart: always
+    environment:
+      WORDPRESS_DB_HOST: mysql:3306
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_DB_USER: wpuser
+      WORDPRESS_DB_PASSWORD: wppassword
+    volumes:
+      - wordpress_data:/var/www/html   # pasta compartilhada entre as 3 instâncias
+    # Sem "ports": não é acessível diretamente pelo host
+    networks:
+      - frontend
+      - backend
+    depends_on:
+      - mysql
+
+  wordpress2:
+    image: wordpress:5.4.2-php7.2-apache
+    container_name: wordpress2
+    restart: always
+    environment:
+      WORDPRESS_DB_HOST: mysql:3306
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_DB_USER: wpuser
+      WORDPRESS_DB_PASSWORD: wppassword
+    volumes:
+      - wordpress_data:/var/www/html
+    networks:
+      - frontend
+      - backend
+    depends_on:
+      - mysql
+
+  wordpress3:
+    image: wordpress:5.4.2-php7.2-apache
+    container_name: wordpress3
+    restart: always
+    environment:
+      WORDPRESS_DB_HOST: mysql:3306
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_DB_USER: wpuser
+      WORDPRESS_DB_PASSWORD: wppassword
+    volumes:
+      - wordpress_data:/var/www/html
+    networks:
+      - frontend
+      - backend
+    depends_on:
+      - mysql
+
+  # ─── Nginx (balanceador de carga) ─────────────────────────────────────────────
+  nginx:
+    image: nginx:1.19.0
+    container_name: nginx
+    restart: always
+    ports:
+      - "80:80"          # único ponto de entrada exposto ao host
+    volumes:
+      - ./volumes/nginx/nginx.conf:/etc/nginx/nginx.conf:ro   # configuração customizada
+      - wordpress_data:/usr/share/nginx/html:ro  # mesma pasta do WordPress
+    networks:
+      - frontend
+    depends_on:
+      - wordpress1
+      - wordpress2
+      - wordpress3
+  
+  # ─── Teste de Carga (Locust) ─────────────────────────────────────────────────
+  locust:
+    image: locustio/locust
+    container_name: locust
+    ports:
+      - "8089:8089"
+    volumes:
+      - ./volumes/locust/locustfile.py:/mnt/locust/locustfile.py
+    command: -f /mnt/locust/locustfile.py
+    networks:
+      - frontend
+
+# ─── Volumes ──────────────────────────────────────────────────────────────────
+volumes:
+  wordpress_data:   # volume compartilhado entre nginx e as 3 instâncias WP
+
+# ─── Redes ────────────────────────────────────────────────────────────────────
+networks:
+  frontend:   # nginx <-> wordpress1/2/3
+  backend:    # wordpress1/2/3 <-> mysql
