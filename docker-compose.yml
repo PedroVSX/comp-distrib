@@ -17,44 +17,8 @@ services:
       - backend
 
   # ─── Instâncias do WordPress ──────────────────────────────────────────────────
-  wordpress1:
+  wordpress:
     image: wordpress:5.4.2-php7.2-apache
-    container_name: wordpress1
-    restart: always
-    environment:
-      WORDPRESS_DB_HOST: mysql:3306
-      WORDPRESS_DB_NAME: wordpress
-      WORDPRESS_DB_USER: wpuser
-      WORDPRESS_DB_PASSWORD: wppassword
-    volumes:
-      - wordpress_data:/var/www/html   # pasta compartilhada entre as 3 instâncias
-    # Sem "ports": não é acessível diretamente pelo host
-    networks:
-      - frontend
-      - backend
-    depends_on:
-      - mysql
-
-  wordpress2:
-    image: wordpress:5.4.2-php7.2-apache
-    container_name: wordpress2
-    restart: always
-    environment:
-      WORDPRESS_DB_HOST: mysql:3306
-      WORDPRESS_DB_NAME: wordpress
-      WORDPRESS_DB_USER: wpuser
-      WORDPRESS_DB_PASSWORD: wppassword
-    volumes:
-      - wordpress_data:/var/www/html
-    networks:
-      - frontend
-      - backend
-    depends_on:
-      - mysql
-
-  wordpress3:
-    image: wordpress:5.4.2-php7.2-apache
-    container_name: wordpress3
     restart: always
     environment:
       WORDPRESS_DB_HOST: mysql:3306
@@ -82,9 +46,7 @@ services:
     networks:
       - frontend
     depends_on:
-      - wordpress1
-      - wordpress2
-      - wordpress3
+      - wordpress
   
   # ─── Teste de Carga (Locust) ─────────────────────────────────────────────────
   locust:
