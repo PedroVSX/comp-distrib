@@ -10,13 +10,13 @@ services:
       MYSQL_DATABASE: wordpress
       MYSQL_USER: wpuser
       MYSQL_PASSWORD: wppassword
-    # Sem "ports": o MySQL só é acessível pelos contêineres na rede interna
     volumes:
       - ./volumes/mysql:/var/lib/mysql
     networks:
       - backend
 
   # ─── Instâncias do WordPress ──────────────────────────────────────────────────
+  # Para escalar: docker compose up --scale wordpress=N -d
   wordpress:
     image: wordpress:5.4.2-php7.2-apache
     restart: always
@@ -39,32 +39,47 @@ services:
     container_name: nginx
     restart: always
     ports:
-      - "80:80"          # único ponto de entrada exposto ao host
+      - "80:80"
     volumes:
-      - ./volumes/nginx/nginx.conf:/etc/nginx/nginx.conf:ro   # configuração customizada
-      - wordpress_data:/usr/share/nginx/html:ro  # mesma pasta do WordPress
+      - ./volumes/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - wordpress_data:/usr/share/nginx/html:ro
     networks:
       - frontend
     depends_on:
       - wordpress
-  
-  # ─── Teste de Carga (Locust) ─────────────────────────────────────────────────
+
+  # ─── Teste de Carga (Locust) ──────────────────────────────────────────────────
   locust:
     image: locustio/locust
     container_name: locust
     ports:
       - "8089:8089"
     volumes:
-      - ./volumes/locust/locustfile.py:/mnt/locust/locustfile.py
-    command: -f /mnt/locust/locustfile.py
+      - ./volumes/locust:/mnt/locust
+    # Modo headless: roda sem UI e gera CSVs automaticamente
+    # Os parâmetros USERS, SPAWN_RATE, RUN_TIME e SCENARIO são passados
+    # pelo script run_tests.sh via variáveis de ambiente
+    command: >
+      -f /mnt/locust/locustfile.py
+      --headless
+      --host http://nginx
+      --users ${USERS:-10}
+      --spawn-rate ${SPAWN_RATE:-10}
+      --run-time ${RUN_TIME:-60s}
+      --csv /mnt/locust/results/${SCENARIO:-scenario1}_u${USERS:-10}
+      --csv-full-history
     networks:
       - frontend
+    depends_on:
+      - nginx
+    profiles:
+      - test   # só sobe quando chamado explicitamente
 
 # ─── Volumes ──────────────────────────────────────────────────────────────────
 volumes:
-  wordpress_data:   # volume compartilhado entre nginx e as 3 instâncias WP
+  wordpress_data:
 
 # ─── Redes ────────────────────────────────────────────────────────────────────
 networks:
-  frontend:   # nginx <-> wordpress1/2/3
-  backend:    # wordpress1/2/3 <-> mysql
+  frontend:
+  backend:
