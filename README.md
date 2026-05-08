@@ -1,159 +1,153 @@
 # Trabalho 3 — Testes de Carga com Locust
 
-## Estrutura de pastas
+## Descrição
 
-```
-projeto/
-├── docker-compose.yml
-├── run_tests.sh
-└── volumes/
-    ├── mysql/                  ← criado automaticamente
-    ├── nginx/
-    │   └── nginx.conf
-    └── locust/
-        ├── locustfile.py
-        └── results/            ← CSVs gerados aqui
-```
+Este trabalho realiza testes de carga em múltiplas instâncias do WordPress usando o Locust, variando o número de usuários simultâneos e o número de instâncias da aplicação. A infraestrutura é composta por um banco MySQL, instâncias WordPress escaláveis e um Nginx como balanceador de carga, todos orquestrados via Docker Compose.
 
 ---
 
-## Passo 1 — Organizar os arquivos
+## Arquitetura
 
-```bash
-mkdir -p volumes/nginx volumes/locust/results volumes/mysql
-cp nginx.conf    volumes/nginx/nginx.conf
-cp locustfile.py volumes/locust/locustfile.py
 ```
+[Locust] → [Nginx (porta 80)] → [WordPress x N instâncias] → [MySQL]
+```
+
+- **Nginx**: balanceador de carga com round-robin
+- **WordPress**: escalado com `--scale wordpress=N`
+- **MySQL**: banco de dados compartilhado entre as instâncias
+- **Locust**: gerador de carga em modo headless
 
 ---
 
-## Passo 2 — Criar os posts no WordPress
+## Cenários de Teste
 
-Antes de rodar os testes, você precisa criar **3 posts** no WordPress:
+| Cenário | Descrição | Usuários testados |
+|---|---|---|
+| scenario1 | Blog post com imagem ~1 MB | 10, 100, 3000 |
+| scenario2 | Blog post com texto ~400 KB | 10, 100, 750 |
+| scenario3 | Blog post com imagem ~300 KB | 10, 100, 3000 |
+| hybrid | Todos os posts simultaneamente | 10, 100, 800 |
 
-| Post | Conteúdo | ID esperado |
-|------|----------|-------------|
-| Cenário 1 | Imagem ~1 MB | 1 (padrão) |
-| Cenário 2 | Texto ~400 KB | 2 (padrão) |
-| Cenário 3 | Imagem ~300 KB | 3 (padrão) |
-
-### Como criar um post com imagem grande
-1. Acesse `http://localhost/wp-admin`
-2. Vá em **Posts > Adicionar novo**
-3. Adicione uma imagem em destaque com o tamanho pedido
-4. Publique e anote o ID (aparece na URL: `post=X`)
-
-### Se os IDs forem diferentes
-Edite o `locustfile.py` e ajuste as variáveis no topo:
-```python
-POST_IMAGE_1MB   = 1   # ID real do seu post
-POST_TEXT_400KB  = 2
-POST_IMAGE_300KB = 3
-```
-
-### Como gerar texto de 400 KB
-Use o site https://loremipsum.io/ e gere texto suficiente
-(400.000 caracteres ≈ 400 KB), ou rode:
-```bash
-python3 -c "print('Lorem ipsum ' * 35000)" > texto400kb.txt
-```
-Cole o conteúdo no editor do WordPress.
+Cada cenário foi executado com 1, 2 e 3 instâncias do WordPress, totalizando **36 testes** e **36 arquivos CSV**.
 
 ---
 
-## Passo 3 — Subir a infraestrutura
+## Resultados e Análise
 
-```bash
-# Sobe tudo (1 instância do WordPress por padrão)
-docker compose up -d mysql wordpress nginx
+### Cenário 1 — Imagem ~1 MB
 
-# Aguarde ~30s para o WordPress inicializar
-# Verifique em http://localhost
-```
+| Usuários | Instâncias | p95 (ms) | Taxa de Falha |
+|---|---|---|---|
+| 10 | 1 | 6 | 0% |
+| 10 | 2 | 6 | 0% |
+| 10 | 3 | 5 | 0% |
+| 100 | 1 | 9 | 0% |
+| 100 | 2 | 9 | 0% |
+| 100 | 3 | 7 | 0% |
+| 3000 | 1 | 1400 | 5,30% |
+| 3000 | 2 | 1500 | 5,57% |
+| 3000 | 3 | 1100 | 6,20% |
 
----
-
-## Passo 4 — Rodar os testes automaticamente
-
-```bash
-chmod +x run_tests.sh
-./run_tests.sh
-```
-
-O script vai:
-1. Para cada combinação de instâncias (1, 2, 3) → escala o WordPress
-2. Para cada número de usuários (10, 100, 1000) → roda o Locust headless
-3. Salva 4 CSVs por teste na pasta `volumes/locust/results/`
-
-**Duração total estimada:** ~27 testes × 60s = ~30 minutos
+Com cargas leve e média, o sistema respondeu com excelente latência (p95 < 10ms). Sob carga pesada (3000 usuários), o tempo de resposta subiu para a casa de 1s, e a taxa de falha estabilizou em torno de 5-6%. Embora 3 instâncias tenham oferecido o melhor p95 (1100ms), elas registraram a maior taxa de falha (6,20%), sugerindo que o gargalo de concorrência no volume compartilhado de arquivos grandes começa a impactar a estabilidade das conexões.
 
 ---
 
-## Passo 5 — Verificar os CSVs
+### Cenário 2 — Texto ~400 KB
 
-```bash
-ls volumes/locust/results/
-```
+| Usuários | Instâncias | p95 (ms) | Taxa de Falha |
+|---|---|---|---|
+| 10 | 1 | 39 | 0% |
+| 10 | 2 | 41 | 0% |
+| 10 | 3 | 49 | 0% |
+| 100 | 1 | 53 | 0% |
+| 100 | 2 | 55 | 0% |
+| 100 | 3 | 52 | 0% |
+| 750 | 1 | 2400 | 0,16% |
+| 750 | 2 | 4400 | 0,54% |
+| 750 | 3 | 4500 | 1,52% |
 
-Você verá arquivos como:
-```
-scenario1_u10_i1_stats.csv
-scenario1_u10_i1_stats_history.csv
-scenario1_u10_i1_failures.csv
-scenario1_u10_i1_exceptions.csv
-scenario1_u100_i1_stats.csv
-...
-scenario3_u1000_i3_stats.csv
-```
-
-### Principais métricas nos CSVs
-
-| Arquivo | O que contém |
-|---------|-------------|
-| `_stats.csv` | Média, mediana, p95, p99, req/s por endpoint |
-| `_stats_history.csv` | Métricas ao longo do tempo (para gráficos de linha) |
-| `_failures.csv` | Requisições que falharam |
+Este cenário mostrou-se o mais sensível à orquestração de múltiplas instâncias. Ao subir para 3 instâncias sob carga pesada, o p95 saltou de 2400ms para 4500ms e a taxa de falha aumentou quase 10 vezes (de 0,16% para 1,52%). Isso indica que, para transferência de texto puro, o custo de processamento do balanceamento de carga do Nginx e a gerência de rede entre containers superam o benefício da distribuição de carga.
 
 ---
 
-## Ajustes opcionais
+### Cenário 3 — Imagem ~300 KB
 
-### Aumentar o tempo de cada teste
-No `run_tests.sh`, altere:
-```bash
-RUN_TIME="120s"   # 2 minutos por teste
-```
+| Usuários | Instâncias | p95 (ms) | Taxa de Falha |
+|---|---|---|---|
+| 10 | 1 | 5 | 0% |
+| 10 | 2 | 3 | 0% |
+| 10 | 3 | 4 | 0% |
+| 100 | 1 | 4 | 0% |
+| 100 | 2 | 4 | 0% |
+| 100 | 3 | 5 | 0% |
+| 3000 | 1 | 17000 | 1,36% |
+| 3000 | 2 | 16000 | 1,30% |
+| 3000 | 3 | 14000 | 1,72% |
 
-### Rodar um teste manual (com UI)
-```bash
-docker compose up locust
-# Acesse http://localhost:8089
-```
-
-### Escalar manualmente
-```bash
-docker compose up -d --scale wordpress=3
-```
+O cenário 3 apresentou o melhor p95 em carga baixa, mas sofreu a maior degradação de tempo de resposta sob estresse (chegando a 17 segundos). No entanto, a taxa de falha permaneceu muito baixa (abaixo de 2%), o que mostra que o servidor consegue processar as requisições, mas a fila de espera torna-se impraticável para o usuário final. Aqui, o uso de 3 instâncias ajudou a reduzir o p95 em 3 segundos comparado a uma única instância.
 
 ---
 
-## Dica: gerar gráficos com Python
+### Cenário Híbrido — Todos os posts
 
-Depois de coletar os CSVs, você pode plotar os gráficos pedidos pelo professor:
+| Usuários | Instâncias | p95 (ms) | Taxa de Falha |
+|---|---|---|---|
+| 10 | 1 | 39 | 0% |
+| 10 | 2 | 32 | 0% |
+| 10 | 3 | 32 | 0% |
+| 100 | 1 | 33 | 0% |
+| 100 | 2 | 33 | 0% |
+| 100 | 3 | 37 | 0% |
+| 800 | 1 | 2200 | 0,05% |
+| 800 | 2 | 2200 | 0,03% |
+| 800 | 3 | 2100 | 0,05% |
 
-```python
-import pandas as pd
-import matplotlib.pyplot as plt
+O cenário híbrido foi o vencedor absoluto em termos de estabilidade. Com a carga distribuída entre diferentes tipos de recursos, a taxa de falha foi virtualmente nula (máximo de 0,05%). O sistema se comportou de forma linear, onde o número de instâncias teve pouco impacto negativo, provando que a diversidade de requisições ajuda a evitar gargalos em um único componente da infraestrutura.
 
-# Exemplo: tempo de resposta médio — cenário 1
-dados = {}
-for instancias in [1, 2, 3]:
-    for usuarios in [10, 100, 1000]:
-        df = pd.read_csv(f"volumes/locust/results/scenario1_u{usuarios}_i{instancias}_stats.csv")
-        # Filtra só o agregado total
-        row = df[df["Name"] == "Aggregated"]
-        dados[(usuarios, instancias)] = row["Average Response Time"].values[0]
+---
 
-# Montar o gráfico de barras agrupadas (igual ao do professor)
-# ... (ver exemplo completo no plot_results.py)
+## Conclusões
+
+- **Escalabilidade não é linear**: em cenários de texto (400KB), o overhead do Docker/Nginx pode tornar o sistema mais lento ao adicionar instâncias.
+- **Resiliência Híbrida**: a distribuição de carga entre múltiplos endpoints (posts diferentes) é a estratégia mais eficaz para manter a taxa de falha próxima de zero.
+- **Gargalo de Tempo vs. Falha**: no cenário 3 (300KB), o sistema priorizou "entregar a resposta mesmo que demore" (baixa falha, altíssimo p95), enquanto no cenário 1 (1MB), ele priorizou "cortar a conexão para não travar" (maior taxa de falha, p95 menor).
+- **Eficiência de 2 instâncias**: Para a maioria dos testes de carga pesada, a configuração com 2 instâncias apresentou o equilíbrio ideal entre taxa de falha e tempo de resposta.
+
+---
+
+## Como Reproduzir
+
+```bash
+# 1. Subir a infraestrutura
+docker compose up -d
+sleep 30
+
+# 2. Rodar os testes
+bash -x ./run_tests.sh
+
+# 3. Gerar os gráficos
+pip install pandas matplotlib
+python plot_results.py
 ```
+
+Os CSVs ficam em `volumes/locust/results/` e os gráficos em `volumes/locust/graficos/`.
+
+## Gráficos
+### Gráficos Taxa de Falha x Nível de Carga
+![](volumes/locust/graficos/g1_failure_rate_i1_x_usuarios.png)
+![](volumes/locust/graficos/g1_failure_rate_i2_x_usuarios.png)
+![](volumes/locust/graficos/g1_failure_rate_i3_x_usuarios.png)
+
+---
+
+### Gráficos Taxa de Falha x Tamanho da página
+![](volumes/locust/graficos/g2_failure_rate_i1_x_paginas.png)
+![](volumes/locust/graficos/g2_failure_rate_i2_x_paginas.png)
+![](volumes/locust/graficos/g2_failure_rate_i3_x_paginas.png)
+
+---
+
+### Gráficos Percentil 95 x Nº de instâncias
+![](volumes/locust/graficos/g3_95pct_scenario1_x_instancias.png)
+![](volumes/locust/graficos/g3_95pct_scenario2_x_instancias.png)
+![](volumes/locust/graficos/g3_95pct_scenario3_x_instancias.png)
