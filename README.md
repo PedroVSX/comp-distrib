@@ -1,5 +1,19 @@
 # Trabalho 3 — Testes de Carga com Locust
 
+Nome: Cainã Rocha  
+Matrícula: 2315038  
+
+Nome: Davi Silveira  
+Matrícula: 2310347 
+
+Nome: Marcos André  
+Matrícula: 2310371 
+
+Nome: Pedro Vieira  
+Matrícula: 2315708 
+
+Universidade de Fortaleza — UNIFOR
+
 ## Descrição
 
 Este trabalho realiza testes de carga em múltiplas instâncias do WordPress usando o Locust, variando o número de usuários simultâneos e o número de instâncias da aplicação. A infraestrutura é composta por um banco MySQL, instâncias WordPress escaláveis e um Nginx como balanceador de carga, todos orquestrados via Docker Compose.
